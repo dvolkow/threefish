@@ -14,19 +14,11 @@ namespace threefish
     static const uint64_t C240 = 0x1BD11BDAA9FC1A22ULL;
 
     // rotation constants for threefish
-    template<size_t> 
+    template<uint8_t> 
     struct rotation_table; 
 
-    typedef rotation_table<256> r256;
-    typedef rotation_table<512> r512;
-    typedef rotation_table<1024> r1024;
-
     // permutation constants
-    template<size_t> struct inverstions_table;
-
-    typedef inverstions_table<256> i256;
-    typedef inverstions_table<512> i512;
-    typedef inverstions_table<1024> i1024;
+    template<uint8_t> struct inverstions_table;
 
     inline uint64_t rol(const uint64_t n, const uint8_t shift)
     {
@@ -155,6 +147,9 @@ namespace threefish
     template <uint8_t SIZE_BLOCK>
     class base 
     {
+        typedef rotation_table<SIZE_BLOCK> r_type;
+        typedef inverstions_table<SIZE_BLOCK> inv_type;
+
     public:
         base(uint64_t * key) 
             : plaintext_(), ciphertext_(), subkeys_(), tweak_(), nw_(SIZE_BLOCK), nr_(SIZE_BLOCK < 16 ? 72 : 80) 
@@ -185,9 +180,9 @@ namespace threefish
         uint64_t ciphertext_[SIZE_BLOCK];
         vector<vector<uint64_t>> subkeys_;
         uint64_t tweak_[3]; 
-        rotation_table<SIZE_BLOCK * 64> rot_;
-        inverstions_table<SIZE_BLOCK * 64> inv_;
         uint8_t nw_, nr_;
+        r_type rot_;
+        inv_type inv_;
     };
 
     template<uint8_t SIZE_BLOCK>
@@ -201,9 +196,6 @@ namespace threefish
         for (uint8_t i = 0; i < nw_; ++i)
             xkey[i] = key[i], xkey[nw_] ^= key[i];
 
-        std::cerr << "nw_ = " << static_cast<int>(nw_) << "\n";
-        std::cerr << "subkeys_.size = " << subkeys_.size() << "\n";
-        std::cerr << "xkey.size = " << xkey.size() << "\n";
         for (uint8_t i = 0; i < subkeys_.size(); ++i)
         {
             for (uint8_t j = 0; j < nw_; ++j)
@@ -213,7 +205,6 @@ namespace threefish
             subkeys_[i][nw_ - 2] += tweak_[(i + 1) % 3];
             subkeys_[i][nw_ - 1] += i;
         }
-        std::cerr << "OK\n";
     }
 
     template<uint8_t SIZE_BLOCK>
@@ -229,18 +220,18 @@ namespace threefish
 		    for (uint8_t w = 0; w < nw_; ++w) 
 			    v[w] += subkeys_[n / 4][w];
 		
-            encrypted_round_mix(nw_, v, rot_[(n + 0) % 8], inv_[0]);
-            encrypted_round_mix(nw_, v, rot_[(n + 1) % 8], inv_[1]);
-            encrypted_round_mix(nw_, v, rot_[(n + 2) % 8], inv_[2]);
-            encrypted_round_mix(nw_, v, rot_[(n + 3) % 8], inv_[3]);
+            encrypted_round_mix(nw_, &v[0], rot_.arr[(n + 0) % 8], inv_.arr[0]);
+            encrypted_round_mix(nw_, &v[0], rot_.arr[(n + 1) % 8], inv_.arr[1]);
+            encrypted_round_mix(nw_, &v[0], rot_.arr[(n + 2) % 8], inv_.arr[2]);
+            encrypted_round_mix(nw_, &v[0], rot_.arr[(n + 3) % 8], inv_.arr[3]);
 
             for (uint8_t w = 0; w < nw_; ++w) 
                 v[w] += subkeys_[n / 4 + 1][w];
 		    
-            encrypted_round_mix(nw_, v, rot_[(n + 4) % 8], inv_[0]);
-            encrypted_round_mix(nw_, v, rot_[(n + 5) % 8], inv_[1]);
-            encrypted_round_mix(nw_, v, rot_[(n + 6) % 8], inv_[2]);
-            encrypted_round_mix(nw_, v, rot_[(n + 7) % 8], inv_[3]);
+            encrypted_round_mix(nw_, &v, rot_.arr[(n + 4) % 8], inv_.arr[0]);
+            encrypted_round_mix(nw_, &v, rot_.arr[(n + 5) % 8], inv_.arr[1]);
+            encrypted_round_mix(nw_, &v, rot_.arr[(n + 6) % 8], inv_.arr[2]);
+            encrypted_round_mix(nw_, &v, rot_.arr[(n + 7) % 8], inv_.arr[3]);
         }
 
         for (uint8_t w = 0; w < nw_; ++w) 
@@ -250,24 +241,24 @@ namespace threefish
     template<uint8_t SIZE_BLOCK>
     void base<SIZE_BLOCK>::decrypt_block(uint64_t * block)
     {
-        uint64_t v[nw_];
+        vector<uint64_t> v(nw_);
         for (uint8_t i = 0; i < nw_; ++i) 
             v[i] = block[i] - subkeys_[nr_ / 4][i];
         
         for (uint8_t n = nr_ - 8; n != 0; n -= 8) 
         {
-            decrypted_round_mix(nw_, v, rot_[(n + 7) % 8], inv_[3]);
-            decrypted_round_mix(nw_, v, rot_[(n + 6) % 8], inv_[2]);
-            decrypted_round_mix(nw_, v, rot_[(n + 5) % 8], inv_[1]);
-            decrypted_round_mix(nw_, v, rot_[(n + 4) % 8], inv_[0]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 7) % 8], inv_.arr[3]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 6) % 8], inv_.arr[2]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 5) % 8], inv_.arr[1]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 4) % 8], inv_.arr[0]);
 
             for (uint8_t w = 0; w < nw_; ++w) 
                 v[w] -= subkeys_[n / 4 + 1][w];
 
-            decrypted_round_mix(nw_, v, rot_[(n + 3) % 8], inv_[3]);
-            decrypted_round_mix(nw_, v, rot_[(n + 2) % 8], inv_[2]);
-            decrypted_round_mix(nw_, v, rot_[(n + 1) % 8], inv_[1]);
-            decrypted_round_mix(nw_, v, rot_[(n + 0) % 8], inv_[0]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 3) % 8], inv_.arr[3]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 2) % 8], inv_.arr[2]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 1) % 8], inv_.arr[1]);
+            decrypted_round_mix(nw_, &v[0], rot_.arr[(n + 0) % 8], inv_.arr[0]);
 
             for (uint8_t w = 0; w < nw_; ++w) 
                 v[w] -= subkeys_[n / 4][w];
@@ -278,7 +269,7 @@ namespace threefish
     }
 
     template<>
-        struct rotation_table<256> 
+        struct rotation_table<4> 
         {
             static constexpr uint8_t arr[8][2] = {  {14, 16}, {52, 57}, {23, 40}, { 5, 37},
                                                     {25, 33}, {46, 12}, {58, 22}, {32, 32}
@@ -286,7 +277,7 @@ namespace threefish
         };
 
     template<>
-        struct rotation_table<512>
+        struct rotation_table<8>
         {
             static constexpr uint8_t arr[8][4] = {  {46, 36, 19, 37}, 	{33, 27, 14, 42},
                                                  	{17, 49, 36, 39},	{44,  9, 54, 56},
@@ -296,9 +287,9 @@ namespace threefish
         };
 
     template<>
-        struct rotation_table<1024>
+        struct rotation_table<16>
         {
-            static constexpr uint8_t arr[8][8] = {  {24, 13,  8, 47,  8, 17, 22, 37},
+            uint8_t arr[8][8] = {  {24, 13,  8, 47,  8, 17, 22, 37},
                                                 	{38, 19, 10, 55, 49, 18, 23, 52},
                                                 	{33,  4, 51, 13, 34, 41, 59, 17},
                                                 	{ 5, 20, 48, 41, 47, 28, 16, 25},
@@ -310,7 +301,7 @@ namespace threefish
         };
 
     template<>
-        struct inverstions_table<256>
+        struct inverstions_table<4>
         {
             static constexpr uint8_t arr[4][4] = {  {0, 1, 2, 3},	{0, 3, 2, 1},
                                                 	{0, 1, 2, 3},   {0, 3, 2, 1}
@@ -318,7 +309,7 @@ namespace threefish
         };
 
     template<>
-        struct inverstions_table<512>
+        struct inverstions_table<8>
         {
             static constexpr uint8_t arr[4][8] = {  {0, 1, 2, 3, 4, 5, 6, 7},
                                                 	{2, 1, 4, 7, 6, 5, 0, 3},
@@ -328,9 +319,9 @@ namespace threefish
         };
 
     template<>
-        struct inverstions_table<1024>
+        struct inverstions_table<16>
         {
-            static constexpr uint8_t arr[4][16] = { {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+            uint8_t arr[4][16] = { {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
                                                 	{0, 9, 2, 13, 6, 11, 4, 15, 10, 7, 12, 3, 14, 5, 8, 1},
                                                 	{0, 7, 2, 5, 4, 3, 6, 1, 12, 15, 14, 13, 8, 11, 10, 9},
                                                 	{0, 15, 2, 11, 6, 13, 4, 9, 14, 1, 8, 5, 10, 3, 12, 7}
