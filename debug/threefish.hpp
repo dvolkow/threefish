@@ -43,8 +43,8 @@ namespace threefish
 
     inline void demix(uint64_t y0, uint64_t y1, uint64_t & x0, uint64_t & x1, uint8_t r)
     {
-	    x1 = ror(y0 ^ y1, r);
-	    x0 = y0 - x1;
+        x1 = ror(y0 ^ y1, r);
+        x0 = y0 - x1;
     }
 
     void encrypted_round_mix(const uint8_t nw, uint64_t * v, const uint8_t * r, const uint8_t * p)
@@ -83,70 +83,70 @@ namespace threefish
                          const uint8_t ** p, uint8_t * key, uint64_t * tweak,
                          uint64_t * plaintext, uint64_t * ciphertext)
     {
-	    uint64_t subkeys[nr/4 + 1][nw];
-	    threefish_exp(nw, nr, key, tweak, &subkeys);
+        uint64_t subkeys[nr/4 + 1][nw];
+        threefish_exp(nw, nr, key, tweak, &subkeys);
 
-	    uint64_t v[nw];
+        uint64_t v[nw];
 
 	    for (uint8_t i = 0; i < nw; ++i) 
 		    v[i] = plaintext[i];
         
-	    for (uint8_t n = 0; n < nr; n += 8) 
+        for (uint8_t n = 0; n < nr; n += 8) 
         {
 		    for (uint8_t w = 0; w < nw; ++w) 
 			    v[w] += subkeys[n / 4][w];
 		
             encrypted_round_mix(nw, v, rot[(n + 0) % 8], p[0]);
-		    encrypted_round_mix(nw, v, rot[(n + 1) % 8], p[1]);
-		    encrypted_round_mix(nw, v, rot[(n + 2) % 8], p[2]);
-		    encrypted_round_mix(nw, v, rot[(n + 3) % 8], p[3]);
+            encrypted_round_mix(nw, v, rot[(n + 1) % 8], p[1]);
+            encrypted_round_mix(nw, v, rot[(n + 2) % 8], p[2]);
+            encrypted_round_mix(nw, v, rot[(n + 3) % 8], p[3]);
 
-		    for (uint8_t w = 0; w < nw; ++w) 
-			    v[w] += subkeys[n / 4 + 1][w];
+            for (uint8_t w = 0; w < nw; ++w) 
+                v[w] += subkeys[n / 4 + 1][w];
 		    
             encrypted_round_mix(nw, v, rot[(n + 4) % 8], p[0]);
-		    encrypted_round_mix(nw, v, rot[(n + 5) % 8], p[1]);
-		    encrypted_round_mix(nw, v, rot[(n + 6) % 8], p[2]);
-		    encrypted_round_mix(nw, v, rot[(n + 7) % 8], p[3]);
-	    }
+            encrypted_round_mix(nw, v, rot[(n + 5) % 8], p[1]);
+            encrypted_round_mix(nw, v, rot[(n + 6) % 8], p[2]);
+            encrypted_round_mix(nw, v, rot[(n + 7) % 8], p[3]);
+        }
 
-	    for (unsigned w = 0; w < nw; ++w) 
-		    ciphertext[w] = v[w] + subkeys[nr/4][w];
+        for (unsigned w = 0; w < nw; ++w) 
+            ciphertext[w] = v[w] + subkeys[nr/4][w];
     }
 
     void decrypt_generic(const uint8_t nw, const uint8_t nr, const uint8_t ** rot, 
                          const uint8_t ** p, uint8_t * key, uint64_t * tweak,
                          uint64_t * ciphertext, uint64_t * plaintext)
     {
-	    uint64_t subkeys[nr/4 + 1][nw];
-	    threefish_exp(nw, nr, key, tweak, &subkeys);
+        uint64_t subkeys[nr/4 + 1][nw];
+        threefish_exp(nw, nr, key, tweak, &subkeys);
 
-	    uint64_t v[nw];
+        uint64_t v[nw];
 
-	    for (uint8_t i = 0; i < nw; ++i) 
-		    v[i] = ciphertext[i] - subkeys[nr / 4][i];
+        for (uint8_t i = 0; i < nw; ++i) 
+            v[i] = ciphertext[i] - subkeys[nr / 4][i];
         
-	    for (uint8_t n = nr - 8; n != 0; n -= 8) 
+        for (uint8_t n = nr - 8; n != 0; n -= 8) 
         {
-		    decrypted_round_mix(nw, v, rot[(n + 7) % 8], p[3]);
-		    decrypted_round_mix(nw, v, rot[(n + 6) % 8], p[2]);
-		    decrypted_round_mix(nw, v, rot[(n + 5) % 8], p[1]);
-		    decrypted_round_mix(nw, v, rot[(n + 4) % 8], p[0]);
+            decrypted_round_mix(nw, v, rot[(n + 7) % 8], p[3]);
+            decrypted_round_mix(nw, v, rot[(n + 6) % 8], p[2]);
+            decrypted_round_mix(nw, v, rot[(n + 5) % 8], p[1]);
+            decrypted_round_mix(nw, v, rot[(n + 4) % 8], p[0]);
 
-		    for (uint8_t w = 0; w < nw; ++w) 
-			    v[w] -= subkeys[n / 4 + 1][w];
+            for (uint8_t w = 0; w < nw; ++w) 
+                v[w] -= subkeys[n / 4 + 1][w];
 
-		    decrypted_round_mix(nw, v, rot[(n + 3) % 8], p[3]);
-		    decrypted_round_mix(nw, v, rot[(n + 2) % 8], p[2]);
-		    decrypted_round_mix(nw, v, rot[(n + 1) % 8], p[1]);
-		    decrypted_round_mix(nw, v, rot[(n + 0) % 8], p[0]);
+            decrypted_round_mix(nw, v, rot[(n + 3) % 8], p[3]);
+            decrypted_round_mix(nw, v, rot[(n + 2) % 8], p[2]);
+            decrypted_round_mix(nw, v, rot[(n + 1) % 8], p[1]);
+            decrypted_round_mix(nw, v, rot[(n + 0) % 8], p[0]);
 
-		    for (uint8_t w = 0; w < nw; ++w) 
-			    v[w] -= subkeys[n / 4][w];
-	    }
+            for (uint8_t w = 0; w < nw; ++w) 
+                v[w] -= subkeys[n / 4][w];
+        }
 
-	    for (uint8_t w = 0; w < nw; ++w) 
-		    plaintext[w] = v[w];
+        for (uint8_t w = 0; w < nw; ++w) 
+            plaintext[w] = v[w];
     }
 
     template<int>
@@ -160,8 +160,8 @@ namespace threefish
     template<>
         struct rotation_table<256> 
         {
-            static constexpr uint8_t arr[8][2] = {   {14, 16}, {52, 57}, {23, 40}, { 5, 37},
-            	                    {25, 33}, {46, 12}, {58, 22}, {32, 32}
+            static constexpr uint8_t arr[8][2] = {  {14, 16}, {52, 57}, {23, 40}, { 5, 37},
+                                                    {25, 33}, {46, 12}, {58, 22}, {32, 32}
             };
         };
 
