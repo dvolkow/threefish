@@ -3,15 +3,17 @@
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 namespace threefish 
 {
     using std::size_t;
+    using std::vector;
 
     static const uint64_t C240 = 0x1BD11BDAA9FC1A22ULL;
 
     // rotation constants for threefish
-    template<int> 
+    template<size_t> 
     struct rotation_table; 
 
     typedef rotation_table<256> r256;
@@ -19,7 +21,7 @@ namespace threefish
     typedef rotation_table<1024> r1024;
 
     // permutation constants
-    template<int> struct inverstions_table;
+    template<size_t> struct inverstions_table;
 
     typedef inverstions_table<256> i256;
     typedef inverstions_table<512> i512;
@@ -84,7 +86,7 @@ namespace threefish
                          uint64_t * plaintext, uint64_t * ciphertext)
     {
         uint64_t subkeys[nr/4 + 1][nw];
-        threefish_exp(nw, nr, key, tweak, &subkeys);
+//        threefish_exp(nw, nr, key, tweak, &subkeys);
 
         uint64_t v[nw];
 
@@ -119,7 +121,7 @@ namespace threefish
                          uint64_t * ciphertext, uint64_t * plaintext)
     {
         uint64_t subkeys[nr/4 + 1][nw];
-        threefish_exp(nw, nr, key, tweak, &subkeys);
+ //       threefish_exp(nw, nr, key, tweak, &subkeys);
 
         uint64_t v[nw];
 
@@ -149,13 +151,57 @@ namespace threefish
             plaintext[w] = v[w];
     }
 
-    template<int>
-    class TFish;
-
-    template<>
-    class TFish<256> 
+    template <size_t SIZE_BLOCK>
+    class base 
     {
+        typedef vector<vector<uint64_t>> vui64;
+    public:
+        base(uint64_t * key) 
+            : plaintext_(nullptr), ciphertext_(nullptr), subkeys_(), tweak_(), nw_(SIZE_BLOCK), nr_(SIZE_BLOCK < 16 ? 72 : 80) 
+            {
+                keys_expand(key);
+            } 
+
+        void encrypt(size_t count_blocks, uint64_t * text);
+        void decrypt(size_t count_blocks, uint64_t * text);
+
+    private:
+        void keys_expand(uint64_t * key);
+        void encrypt_block();
+        void decrypt_block();
+
+    private:
+        uint64_t plaintext_[SIZE_BLOCK];
+        uint64_t ciphertext_[SIZE_BLOCK];
+        vui64 subkeys_;
+        uint64_t tweak_[3]; 
+        uint8_t nw_, nr_;
     };
+
+    template<size_t SIZE_BLOCK>
+    void base<SIZE_BLOCK>::keys_expand(uint64_t * key)
+    {
+        subkeys_.resize(nr_ / 4 + 1);
+        for (auto d : subkeys_)
+            d.resize(nw_);
+        
+        uint64_t xkey[nw_ + 1];
+        xkey[nw_] = C240;
+
+        for (uint8_t i = 0; i < nw_; ++i)
+            xkey[i] = key[i], xkey[nw_] ^= key[i];
+
+        for (uint8_t i = 0; i < subkeys_.size(); ++i)
+        {
+            for (uint8_t j = 0; j < nw_; ++j)
+                subkeys_[i][j] = xkey[(i + j) % (nw_ + 1)];
+
+            subkeys_[i][nw_ - 3] += tweak_[i % 3];
+            subkeys_[i][nw_ - 2] += tweak_[(i + 1) % 3];
+            subkeys_[i][nw_ - 1] += i;
+        }
+
+    }
 
     template<>
         struct rotation_table<256> 
