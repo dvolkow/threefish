@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 namespace threefish 
 {
@@ -151,46 +152,58 @@ namespace threefish
             plaintext[w] = v[w];
     }
 
-    template <size_t SIZE_BLOCK>
+    template <uint8_t SIZE_BLOCK>
     class base 
     {
-        typedef vector<vector<uint64_t>> vui64;
     public:
         base(uint64_t * key) 
-            : plaintext_(nullptr), ciphertext_(nullptr), subkeys_(), tweak_(), nw_(SIZE_BLOCK), nr_(SIZE_BLOCK < 16 ? 72 : 80) 
+            : plaintext_(), ciphertext_(), subkeys_(), tweak_(), nw_(SIZE_BLOCK), nr_(SIZE_BLOCK < 16 ? 72 : 80) 
             {
                 keys_expand(key);
             } 
 
-        void encrypt(size_t count_blocks, uint64_t * text);
-        void decrypt(size_t count_blocks, uint64_t * text);
+        void encrypt(size_t count_blocks, uint64_t * text)
+        {
+            for (size_t i = 0; i < count_blocks; ++i)
+                encrypt_block(text + i * SIZE_BLOCK);
+        }
+
+        void decrypt(size_t count_blocks, uint64_t * text)
+        {
+            for (size_t i = 0; i < count_blocks; ++i)
+                decrypt_block(text + i * SIZE_BLOCK);
+        }
 
     private:
         void keys_expand(uint64_t * key);
-        void encrypt_block();
-        void decrypt_block();
+    public:
+        void encrypt_block(uint64_t * block);
+        void decrypt_block(uint64_t * block);
 
     private:
         uint64_t plaintext_[SIZE_BLOCK];
         uint64_t ciphertext_[SIZE_BLOCK];
-        vui64 subkeys_;
+        vector<vector<uint64_t>> subkeys_;
         uint64_t tweak_[3]; 
+        rotation_table<SIZE_BLOCK * 64> rot_;
+        inverstions_table<SIZE_BLOCK * 64> inv_;
         uint8_t nw_, nr_;
     };
 
-    template<size_t SIZE_BLOCK>
+    template<uint8_t SIZE_BLOCK>
     void base<SIZE_BLOCK>::keys_expand(uint64_t * key)
     {
-        subkeys_.resize(nr_ / 4 + 1);
-        for (auto d : subkeys_)
-            d.resize(nw_);
+        subkeys_ = vector<vector<uint64_t>>(nr_ / 4 + 1, vector<uint64_t>(nw_));
         
-        uint64_t xkey[nw_ + 1];
+        vector<uint64_t> xkey(nw_ + 1);
         xkey[nw_] = C240;
 
         for (uint8_t i = 0; i < nw_; ++i)
             xkey[i] = key[i], xkey[nw_] ^= key[i];
 
+        std::cerr << "nw_ = " << static_cast<int>(nw_) << "\n";
+        std::cerr << "subkeys_.size = " << subkeys_.size() << "\n";
+        std::cerr << "xkey.size = " << xkey.size() << "\n";
         for (uint8_t i = 0; i < subkeys_.size(); ++i)
         {
             for (uint8_t j = 0; j < nw_; ++j)
@@ -200,7 +213,68 @@ namespace threefish
             subkeys_[i][nw_ - 2] += tweak_[(i + 1) % 3];
             subkeys_[i][nw_ - 1] += i;
         }
+        std::cerr << "OK\n";
+    }
 
+    template<uint8_t SIZE_BLOCK>
+    void base<SIZE_BLOCK>::encrypt_block(uint64_t * block)
+    {
+        uint64_t v[nw_];
+
+	    for (uint8_t i = 0; i < nw_; ++i) 
+		    v[i] = block[i];
+        
+        for (uint8_t n = 0; n < nr_; n += 8) 
+        {
+		    for (uint8_t w = 0; w < nw_; ++w) 
+			    v[w] += subkeys_[n / 4][w];
+		
+            encrypted_round_mix(nw_, v, rot_[(n + 0) % 8], inv_[0]);
+            encrypted_round_mix(nw_, v, rot_[(n + 1) % 8], inv_[1]);
+            encrypted_round_mix(nw_, v, rot_[(n + 2) % 8], inv_[2]);
+            encrypted_round_mix(nw_, v, rot_[(n + 3) % 8], inv_[3]);
+
+            for (uint8_t w = 0; w < nw_; ++w) 
+                v[w] += subkeys_[n / 4 + 1][w];
+		    
+            encrypted_round_mix(nw_, v, rot_[(n + 4) % 8], inv_[0]);
+            encrypted_round_mix(nw_, v, rot_[(n + 5) % 8], inv_[1]);
+            encrypted_round_mix(nw_, v, rot_[(n + 6) % 8], inv_[2]);
+            encrypted_round_mix(nw_, v, rot_[(n + 7) % 8], inv_[3]);
+        }
+
+        for (uint8_t w = 0; w < nw_; ++w) 
+            ciphertext_[w] = v[w] + subkeys_[nr_ / 4][w];
+    }
+
+    template<uint8_t SIZE_BLOCK>
+    void base<SIZE_BLOCK>::decrypt_block(uint64_t * block)
+    {
+        uint64_t v[nw_];
+        for (uint8_t i = 0; i < nw_; ++i) 
+            v[i] = block[i] - subkeys_[nr_ / 4][i];
+        
+        for (uint8_t n = nr_ - 8; n != 0; n -= 8) 
+        {
+            decrypted_round_mix(nw_, v, rot_[(n + 7) % 8], inv_[3]);
+            decrypted_round_mix(nw_, v, rot_[(n + 6) % 8], inv_[2]);
+            decrypted_round_mix(nw_, v, rot_[(n + 5) % 8], inv_[1]);
+            decrypted_round_mix(nw_, v, rot_[(n + 4) % 8], inv_[0]);
+
+            for (uint8_t w = 0; w < nw_; ++w) 
+                v[w] -= subkeys_[n / 4 + 1][w];
+
+            decrypted_round_mix(nw_, v, rot_[(n + 3) % 8], inv_[3]);
+            decrypted_round_mix(nw_, v, rot_[(n + 2) % 8], inv_[2]);
+            decrypted_round_mix(nw_, v, rot_[(n + 1) % 8], inv_[1]);
+            decrypted_round_mix(nw_, v, rot_[(n + 0) % 8], inv_[0]);
+
+            for (uint8_t w = 0; w < nw_; ++w) 
+                v[w] -= subkeys_[n / 4][w];
+        }
+
+        for (uint8_t w = 0; w < nw_; ++w) 
+            plaintext_[w] = v[w];
     }
 
     template<>
