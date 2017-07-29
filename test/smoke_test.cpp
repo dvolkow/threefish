@@ -11,7 +11,8 @@ int main()
 	uint64_t cypertext[32] = {0};
 	uint64_t decrypt[32] = {0};
 
-    threefish::Cryptor<16> enc(&key[0]);
+    //threefish::Cryptor<16> enc(&key[0]);
+    threefish::Cryptor<16> enc("password");
     enc.encrypt(2, &plaintext[0], &cypertext[0]);
     enc.decrypt(2, &cypertext[0], &decrypt[0]);
 

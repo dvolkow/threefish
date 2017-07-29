@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -15,7 +16,9 @@ namespace threefish
     // permutation constants:
     template<uint8_t> struct inverstions_table;
 
-
+    /**
+     * Only 4, 8 or 16 dwords size value may be parameters (SIZE_BLOCK)
+     */
     template <uint8_t SIZE_BLOCK>
     class Cryptor 
     {
@@ -24,17 +27,33 @@ namespace threefish
 
     public:
         Cryptor(uint64_t * key) 
-            : plaintext_(SIZE_BLOCK), ciphertext_(SIZE_BLOCK), subkeys_(), tweak_(), nw_(SIZE_BLOCK), nr_(SIZE_BLOCK < 16 ? 72 : 80) 
+            : subkeys_(), tweak_(), nw_(SIZE_BLOCK), nr_(SIZE_BLOCK < 16 ? 72 : 80) 
             {
                 keys_expand(key);
             } 
+
+        Cryptor(const std::string & s)
+            : subkeys_(), tweak_(), nw_(SIZE_BLOCK), nr_(SIZE_BLOCK < 16 ? 72 : 80)
+            {
+                vector<char> buffer(SIZE_BLOCK * 8);
+                for (size_t i = 0; i < s.size(); ++i)
+                    buffer[i % (SIZE_BLOCK * 8)] = s[i];
+
+                vector<uint64_t> key_buff(SIZE_BLOCK);
+                for (size_t i = 0; i < SIZE_BLOCK; ++i)
+                {
+                    for (uint8_t j = 0; j < 8; ++j)
+                        key_buff[i] |= static_cast<uint64_t>(buffer[i * 8 + j]) << (j * 8);
+                }
+
+                keys_expand(&key_buff[0]);
+            }
 
         void encrypt(const size_t count_blocks, uint64_t * source, uint64_t * dest)
         {
             for (size_t i = 0; i < count_blocks; ++i)
             {
-                encrypt_block(source + i * SIZE_BLOCK);
-                std::memcpy(dest + i * SIZE_BLOCK, &ciphertext_[0], ciphertext_.size() * sizeof(ciphertext_[0]));
+                encrypt_block(source + i * SIZE_BLOCK, dest + i * SIZE_BLOCK);
             }
         }
 
@@ -42,21 +61,17 @@ namespace threefish
         {
             for (size_t i = 0; i < count_blocks; ++i)
             {
-                decrypt_block(source + i * SIZE_BLOCK);
-                std::memcpy(dest + i * SIZE_BLOCK, &plaintext_[0], plaintext_.size() * sizeof(plaintext_[0]));
+                decrypt_block(source + i * SIZE_BLOCK, dest + i * SIZE_BLOCK);
             }
         }
 
     private:
         void keys_expand(uint64_t * key);
-        void encrypt_block(uint64_t * block);
-        void decrypt_block(uint64_t * block);
+        void encrypt_block(uint64_t * src, uint64_t * dst);
+        void decrypt_block(uint64_t * src, uint64_t * dst);
 
     private:
-        vector<uint64_t> plaintext_;
-        vector<uint64_t> ciphertext_;
         vector<vector<uint64_t>> subkeys_;
-
         uint64_t tweak_[3]; 
         uint8_t nw_, nr_;
         r_type rot_;
@@ -129,17 +144,17 @@ namespace threefish
     }
 
     template<uint8_t SIZE_BLOCK>
-    void Cryptor<SIZE_BLOCK>::encrypt_block(uint64_t * block)
+    void Cryptor<SIZE_BLOCK>::encrypt_block(uint64_t * src, uint64_t * dst)
     {
         vector<uint64_t> v(nw_);
 
-	    for (uint8_t i = 0; i < nw_; ++i) 
-		    v[i] = block[i];
+        for (uint8_t i = 0; i < nw_; ++i) 
+            v[i] = src[i];
         
         for (uint8_t n = 0; n < nr_; n += 8U) 
         {
-		    for (uint8_t w = 0; w < nw_; ++w) 
-			    v[w] += subkeys_[n / 4][w];
+            for (uint8_t w = 0; w < nw_; ++w) 
+                v[w] += subkeys_[n / 4][w];
 		
             encrypted_round_mix(nw_, &v[0], rot_.arr[(n + 0) % 8], inv_.arr[0]);
             encrypted_round_mix(nw_, &v[0], rot_.arr[(n + 1) % 8], inv_.arr[1]);
@@ -156,16 +171,16 @@ namespace threefish
         }
 
         for (uint8_t w = 0; w < nw_; ++w) 
-            ciphertext_[w] = v[w] + subkeys_[nr_ / 4][w];
+            dst[w] = v[w] + subkeys_[nr_ / 4][w];
     }
 
     template<uint8_t SIZE_BLOCK>
-    void Cryptor<SIZE_BLOCK>::decrypt_block(uint64_t * block)
+    void Cryptor<SIZE_BLOCK>::decrypt_block(uint64_t * src, uint64_t * dst)
     {
         vector<uint64_t> v(nw_);
 
         for (uint8_t i = 0; i < nw_; ++i) 
-            v[i] = block[i] - subkeys_[nr_ / 4][i];
+            v[i] = src[i] - subkeys_[nr_ / 4][i];
         
         for (uint8_t n = nr_; n != 0; ) 
         {
@@ -189,7 +204,7 @@ namespace threefish
         }
 
         for (uint8_t w = 0; w < nw_; ++w) 
-            plaintext_[w] = v[w];
+            dst[w] = v[w];
     }
 
     template<>
@@ -227,7 +242,7 @@ namespace threefish
     template<>
         struct inverstions_table<4>
         {
-            static constexpr uint8_t arr[4][4] = {  {0, 1, 2, 3},	{0, 3, 2, 1},
+            static constexpr uint8_t arr[4][4] = {  {0, 1, 2, 3},   {0, 3, 2, 1},
                                                     {0, 1, 2, 3},   {0, 3, 2, 1}
             };
         };
